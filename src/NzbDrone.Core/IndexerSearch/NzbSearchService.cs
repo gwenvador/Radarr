@@ -5,11 +5,15 @@ using System.Threading.Tasks;
 using NLog;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Common.TPL;
+using NzbDrone.Core.CustomFormats;
 using NzbDrone.Core.DecisionEngine;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.IndexerSearch.Definitions;
+using NzbDrone.Core.Languages;
 using NzbDrone.Core.Movies;
+using NzbDrone.Core.Movies.AlternativeTitles;
 using NzbDrone.Core.Parser.Model;
+using NzbDrone.Core.Profiles;
 
 namespace NzbDrone.Core.IndexerSearch
 {
@@ -24,16 +28,19 @@ namespace NzbDrone.Core.IndexerSearch
         private readonly IIndexerFactory _indexerFactory;
         private readonly IMakeDownloadDecision _makeDownloadDecision;
         private readonly IMovieService _movieService;
+        private readonly IProfileService _profileService;
         private readonly Logger _logger;
 
         public NzbSearchService(IIndexerFactory indexerFactory,
                                 IMakeDownloadDecision makeDownloadDecision,
                                 IMovieService movieService,
+                                IProfileService profileService,
                                 Logger logger)
         {
             _indexerFactory = indexerFactory;
             _makeDownloadDecision = makeDownloadDecision;
             _movieService = movieService;
+            _profileService = profileService;
             _logger = logger;
         }
 
@@ -58,8 +65,24 @@ namespace NzbDrone.Core.IndexerSearch
             {
                 Movie = movie,
                 UserInvokedSearch = userInvokedSearch,
-                InteractiveSearch = interactiveSearch
+                InteractiveSearch = interactiveSearch,
+                SceneTitles = new List<string> { movie.Title }
             };
+
+            var profile = _profileService.Get(movie.ProfileId);
+
+            var wantedLanguages = _profileService.GetAcceptableLanguages(movie.ProfileId);
+
+            var translations = new List<string>();
+
+            //Add Translation of wanted language to search query
+            foreach (var translation in movie.AlternativeTitles.Where(a => wantedLanguages.Contains(a.Language) && a.SourceType == SourceType.Translation))
+            {
+                translations.Add(translation.Title);
+            }
+
+            spec.SceneTitles.AddRange(translations.Distinct());
+
             return spec;
         }
 
